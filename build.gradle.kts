@@ -1,15 +1,11 @@
 plugins {
     java
     `maven-publish`
-
-    // Nothing special about this, just keep it up to date
-    id("com.github.johnrengelman.shadow") version "7.1.2" apply false
-
-    // In general, keep this version in sync with upstream. Sometimes a newer version than upstream might work, but an older version is extremely likely to break.
-    id("io.papermc.paperweight.patcher") version "1.4.0"
+    id("com.github.johnrengelman.shadow") version "8.1.1" apply false
+    id("io.papermc.paperweight.patcher") version "1.5.5"
 }
 
-val paperMavenPublicUrl = "https://repo.papermc.io/repository/maven-public/"
+val paperMavenPublicUrl = "https://papermc.io/repo/repository/maven-public/"
 
 repositories {
     mavenCentral()
@@ -19,9 +15,9 @@ repositories {
 }
 
 dependencies {
-    remapper("net.fabricmc:tiny-remapper:0.8.6:fat") // Must be kept in sync with upstream
-    decompiler("net.minecraftforge:forgeflower:2.0.605.1") // Must be kept in sync with upstream
-    paperclip("io.papermc:paperclip:3.0.2") // You probably want this to be kept in sync with upstream
+    remapper("net.fabricmc:tiny-remapper:0.8.6:fat")
+    decompiler("net.minecraftforge:forgeflower:2.0.627.2")
+    paperclip("io.papermc:paperclip:3.0.3")
 }
 
 allprojects {
@@ -39,6 +35,7 @@ subprojects {
     tasks.withType<JavaCompile> {
         options.encoding = Charsets.UTF_8.name()
         options.release.set(17)
+        options.compilerArgs.add("-Xlint:-deprecation,-removal,-dep-ann")
     }
     tasks.withType<Javadoc> {
         options.encoding = Charsets.UTF_8.name()
@@ -54,18 +51,18 @@ subprojects {
 }
 
 paperweight {
-    serverProject.set(project(":forktest-server"))
+    serverProject.set(project(":wtserver-server"))
 
     remapRepo.set(paperMavenPublicUrl)
     decompileRepo.set(paperMavenPublicUrl)
 
-    usePaperUpstream(providers.gradleProperty("paperRef")) {
+    usePaperUpstream(providers.gradleProperty("paperCommit")) {
         withPaperPatcher {
             apiPatchDir.set(layout.projectDirectory.dir("patches/api"))
-            apiOutputDir.set(layout.projectDirectory.dir("forktest-api"))
+            apiOutputDir.set(layout.projectDirectory.dir("wtserver-api"))
 
             serverPatchDir.set(layout.projectDirectory.dir("patches/server"))
-            serverOutputDir.set(layout.projectDirectory.dir("forktest-server"))
+            serverOutputDir.set(layout.projectDirectory.dir("wtserver-server"))
         }
     }
 }
@@ -75,7 +72,7 @@ paperweight {
 //
 
 tasks.generateDevelopmentBundle {
-    apiCoordinates.set("com.example.paperfork:forktest-api")
+    apiCoordinates.set("com.example.paperfork:wtserver-api")
     mojangApiCoordinates.set("io.papermc.paper:paper-mojangapi")
     libraryRepositories.set(
         listOf(

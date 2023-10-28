@@ -1,10 +1,10 @@
 pluginManagement {
     repositories {
         gradlePluginPortal()
-        maven("https://repo.papermc.io/repository/maven-public/")
+        maven("https://papermc.io/repo/repository/maven-public/")
     }
 }
 
-rootProject.name = "forktest"
+rootProject.name = "wtserver"
 
-include("forktest-api", "forktest-server")
+include("wtserver-api", "wtserver-server")

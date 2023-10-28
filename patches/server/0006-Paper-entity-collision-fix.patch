@@ -1,0 +1,158 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Thu, 18 May 2023 14:10:51 +0800
+Subject: [PATCH] Paper entity collision fix
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index 305b43071aa1cf8feee75fae757bb7734ae33771..62130541f13b3982aa41c2e1ef9b60592b4f64bf 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -125,6 +125,7 @@ import net.minecraft.world.phys.shapes.Shapes;
+ import net.minecraft.world.phys.shapes.VoxelShape;
+ import net.minecraft.world.scores.PlayerTeam;
+ import net.minecraft.world.scores.Team;
++import net.windmilltown.wtserver.WindmillTownConfig;
+ import org.slf4j.Logger;
+ import org.bukkit.Bukkit;
+ import org.bukkit.Location;
+@@ -1446,6 +1447,10 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+     private Vec3 collide(Vec3 movement) {
+         // Paper start - optimise collisions
+         // This is a copy of vanilla's except that it uses strictly AABB math
++        // WindmillTown start - use vanilla collision if the configuration is enabled
++        if(WindmillTownConfig.getConfig().useVanillaEntityCollision.value())
++            return collideVanilla(movement);
++        // WindmillTown end
+         if (movement.x == 0.0 && movement.y == 0.0 && movement.z == 0.0) {
+             return movement;
+         }
+@@ -1518,6 +1523,37 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+         // Paper end - optimise collisions
+     }
+ 
++    // WindmillTown start - vanilla collision
++    private Vec3 collideVanilla(Vec3 vec3d) {
++        AABB axisalignedbb = this.getBoundingBox();
++        List<VoxelShape> list = this.level.getEntityCollisions(this, axisalignedbb.expandTowards(vec3d));
++        Vec3 vec3d1 = vec3d.lengthSqr() == 0.0D ? vec3d : collideBoundingBox(this, vec3d, axisalignedbb, this.level, list);
++        boolean flag = vec3d.x != vec3d1.x;
++        boolean flag1 = vec3d.y != vec3d1.y;
++        boolean flag2 = vec3d.z != vec3d1.z;
++        boolean flag3 = this.onGround || flag1 && vec3d.y < 0.0D;
++
++        if (this.maxUpStep() > 0.0F && flag3 && (flag || flag2)) {
++            Vec3 vec3d2 = collideBoundingBox(this, new Vec3(vec3d.x, (double) this.maxUpStep(), vec3d.z), axisalignedbb, this.level, list);
++            Vec3 vec3d3 = collideBoundingBox(this, new Vec3(0.0D, (double) this.maxUpStep(), 0.0D), axisalignedbb.expandTowards(vec3d.x, 0.0D, vec3d.z), this.level, list);
++
++            if (vec3d3.y < (double) this.maxUpStep()) {
++                Vec3 vec3d4 = collideBoundingBox(this, new Vec3(vec3d.x, 0.0D, vec3d.z), axisalignedbb.move(vec3d3), this.level, list).add(vec3d3);
++
++                if (vec3d4.horizontalDistanceSqr() > vec3d2.horizontalDistanceSqr()) {
++                    vec3d2 = vec3d4;
++                }
++            }
++
++            if (vec3d2.horizontalDistanceSqr() > vec3d1.horizontalDistanceSqr()) {
++                return vec3d2.add(collideBoundingBox(this, new Vec3(0.0D, -vec3d2.y + vec3d.y, 0.0D), axisalignedbb.move(vec3d2), this.level, list));
++            }
++        }
++
++        return vec3d1;
++    }
++    // WindmillTown end
++
+     public static Vec3 collideBoundingBox(@Nullable Entity entity, Vec3 movement, AABB entityBoundingBox, Level world, List<VoxelShape> collisions) {
+         Builder<VoxelShape> builder = ImmutableList.builderWithExpectedSize(collisions.size() + 1);
+ 
+diff --git a/src/main/java/net/minecraft/world/phys/shapes/Shapes.java b/src/main/java/net/minecraft/world/phys/shapes/Shapes.java
+index 731c7dd15f131dc124be6af8f342b122cb89491b..2afe6a642cdfa4612f4b9a637e19048ae5a452a1 100644
+--- a/src/main/java/net/minecraft/world/phys/shapes/Shapes.java
++++ b/src/main/java/net/minecraft/world/phys/shapes/Shapes.java
+@@ -11,6 +11,7 @@ import net.minecraft.Util;
+ import net.minecraft.core.AxisCycle;
+ import net.minecraft.core.Direction;
+ import net.minecraft.world.phys.AABB;
++import net.windmilltown.wtserver.WindmillTownConfig;
+ 
+ public final class Shapes {
+     public static final double EPSILON = 1.0E-7D;
+@@ -29,7 +30,7 @@ public final class Shapes {
+     }
+ 
+     public static VoxelShape block() {
+-        return BLOCK_OPTIMISED; // Paper
++        return WindmillTownConfig.getConfig().useVanillaEntityCollision.value() ? BLOCK : BLOCK_OPTIMISED; // Paper // WindmillTown
+     }
+ 
+     public static VoxelShape box(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+@@ -41,6 +42,10 @@ public final class Shapes {
+     }
+ 
+     public static VoxelShape create(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
++        // WindmillTown start - use vanilla collision if the configuration is enabled
++        if(WindmillTownConfig.getConfig().useVanillaEntityCollision.value())
++            return createVanilla(minX, minY, minZ, maxX, maxY, maxZ);
++        // WindmillTown end
+         if (!(maxX - minX < 1.0E-7D) && !(maxY - minY < 1.0E-7D) && !(maxZ - minZ < 1.0E-7D)) {
+             return new io.papermc.paper.voxel.AABBVoxelShape(new AABB(minX, minY, minZ, maxX, maxY, maxZ)); // Paper
+         } else {
+@@ -48,8 +53,35 @@ public final class Shapes {
+         }
+     }
+ 
++    // WindmillTown start - vanilla collison
++    public static VoxelShape createVanilla(double d0, double d1, double d2, double d3, double d4, double d5) {
++        if (d3 - d0 >= 1.0E-7D && d4 - d1 >= 1.0E-7D && d5 - d2 >= 1.0E-7D) {
++            int i = findBits(d0, d3);
++            int j = findBits(d1, d4);
++            int k = findBits(d2, d5);
++
++            if (i >= 0 && j >= 0 && k >= 0) {
++                if (i == 0 && j == 0 && k == 0) {
++                    return block();
++                } else {
++                    int l = 1 << i;
++                    int i1 = 1 << j;
++                    int j1 = 1 << k;
++                    BitSetDiscreteVoxelShape voxelshapebitset = BitSetDiscreteVoxelShape.withFilledBounds(l, i1, j1, (int) Math.round(d0 * (double) l), (int) Math.round(d1 * (double) i1), (int) Math.round(d2 * (double) j1), (int) Math.round(d3 * (double) l), (int) Math.round(d4 * (double) i1), (int) Math.round(d5 * (double) j1));
++
++                    return new CubeVoxelShape(voxelshapebitset);
++                }
++            } else {
++                return new ArrayVoxelShape(Shapes.BLOCK.shape, DoubleArrayList.wrap(new double[]{d0, d3}), DoubleArrayList.wrap(new double[]{d1, d4}), DoubleArrayList.wrap(new double[]{d2, d5}));
++            }
++        } else {
++            return empty();
++        }
++    }
++    // WindmillTown end
++
+     public static VoxelShape create(AABB box) {
+-        return new io.papermc.paper.voxel.AABBVoxelShape(box); // Paper
++        return create(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ); // Paper // WindmillTown
+     }
+ 
+     @VisibleForTesting
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java b/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
+index 6dbd2ae7dd3ddca325eb0824461532b21d4e3ae1..ce918f7ef8da41a612ccd7bcd23d12e6b8629405 100644
+--- a/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
+@@ -1,5 +1,6 @@
+ package net.windmilltown.wtserver;
+ 
++import com.google.common.collect.ImmutableList;
+ import org.bukkit.Bukkit;
+ import org.bukkit.configuration.InvalidConfigurationException;
+ import org.bukkit.configuration.file.YamlConfiguration;
+@@ -13,6 +14,10 @@ public class WindmillTownConfig extends YamlConfiguration {
+     final public ConfigKey<Boolean> useOldVersionFallingTick = new ConfigKey<>("game-behaviour.use-old-falling-tick", false);
+     final public ConfigKey<Boolean> fallingTickModeAutoSave = new ConfigKey<>("game-behaviour.falling-tick-auto-save", false);
+     final public ConfigKey<Boolean> alwaysTickEntities = new ConfigKey<>("paper-fix.always-tick-entities", false);
++    final public ConfigKey<Boolean> useVanillaEntityCollision = new ConfigKey<>("paper-fix.use-vanilla-entity-collision", false, ImmutableList.of(
++        "Enabling this feature will replace the paper voxel shape collider with the vanilla collider.",
++        "Vanilla collider takes more than 50% performance cost but will fix all the collision issues."
++    ));
+ 
+     private static WindmillTownConfig config;
+ 

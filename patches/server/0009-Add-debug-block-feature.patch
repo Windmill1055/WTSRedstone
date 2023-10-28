@@ -1,0 +1,515 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Wed, 19 Jul 2023 18:58:28 +0800
+Subject: [PATCH] Add debug block feature
+
+
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 447dc21fbacad50d09ce32892c1280d2d0c0e985..5526bb4107c408866d876f314c26dbe0d38754ce 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -161,6 +161,10 @@ import net.minecraft.world.level.storage.PrimaryLevelData;
+ import net.minecraft.world.level.storage.ServerLevelData;
+ import net.minecraft.world.level.storage.WorldData;
+ import net.minecraft.world.level.storage.loot.LootDataManager;
++import net.minecraft.world.phys.Vec2;
++import net.minecraft.world.phys.Vec3;
++import net.minecraft.world.ticks.ScheduledTick;
++import net.windmilltown.wtserver.debugblock.MicroTick;
+ import org.slf4j.Logger;
+ 
+ // CraftBukkit start
+@@ -1129,6 +1133,11 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         this.getAllLevels().forEach((world) -> world.setTickrate(tickrate));
+     }
+     // WindmillTown end
++
++    // WindmillTown start - debug block pending tick logger
++    public MicroTick currentMicroTick = MicroTick.NAN;
++    public ScheduledTick<?> currentPendingTick = null;
++    // WindmillTown end
+     protected void runServer() {
+         try {
+             long serverStartTime = Util.getNanos(); // Paper
+@@ -1616,6 +1625,8 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         }
+         this.isIteratingOverLevels = false; // Paper
+ 
++        this.currentMicroTick = MicroTick.NETWORK_UPDATE; // WindmillTown - log current micro tick
++
+         this.profiler.popPush("connection");
+         MinecraftTimings.connectionTimer.startTiming(); // Spigot
+         this.getConnection().tick();
+diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
+index 68034bb8a76658045c5eaf77bc3c0882c4d9a838..13fd32ca6f036e06acc8c6b597fe0c00fb716075 100644
+--- a/src/main/java/net/minecraft/server/level/ServerLevel.java
++++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
+@@ -162,6 +162,7 @@ import net.minecraft.world.phys.shapes.BooleanOp;
+ import net.minecraft.world.phys.shapes.Shapes;
+ import net.minecraft.world.phys.shapes.VoxelShape;
+ import net.minecraft.world.ticks.LevelTicks;
++import net.windmilltown.wtserver.debugblock.MicroTick;
+ import org.slf4j.Logger;
+ import org.bukkit.Bukkit;
+ import org.bukkit.Location;
+@@ -852,8 +853,10 @@ public class ServerLevel extends Level implements WorldGenLevel {
+         timings.scheduledBlocks.startTiming(); // Paper
+         if (!this.isDebug()) {
+             j = this.getGameTime();
++            this.server.currentMicroTick = MicroTick.NEXT_TICK_ENTRY_BLOCK; // WindmillTown - log current micro tick
+             gameprofilerfiller.push("blockTicks");
+             this.blockTicks.tick(j, 65536, this::tickBlock);
++            this.server.currentMicroTick = MicroTick.NEXT_TICK_ENTRY_FLUID; // WindmillTown - log current micro tick
+             gameprofilerfiller.popPush("fluidTicks");
+             this.fluidTicks.tick(j, 65536, this::tickFluid);
+             gameprofilerfiller.pop();
+@@ -868,6 +871,7 @@ public class ServerLevel extends Level implements WorldGenLevel {
+         this.timings.chunkProviderTick.startTiming(); // Paper - timings
+         this.getChunkSource().tick(shouldKeepTicking, true);
+         this.timings.chunkProviderTick.stopTiming(); // Paper - timings
++        this.server.currentMicroTick = MicroTick.BLOCK_EVENT; // WindmillTown - log current micro tick
+         gameprofilerfiller.popPush("blockEvents");
+         timings.doSounds.startTiming(); // Spigot
+         this.runBlockEvents();
+@@ -881,6 +885,7 @@ public class ServerLevel extends Level implements WorldGenLevel {
+         }
+ 
+         if (flag || this.emptyTime++ < 300) {
++            this.server.currentMicroTick = MicroTick.ENTITY;
+             gameprofilerfiller.push("entities");
+             timings.tickEntities.startTiming(); // Spigot
+             if (this.dragonFight != null) {
+@@ -920,6 +925,7 @@ public class ServerLevel extends Level implements WorldGenLevel {
+             timings.entityTick.stopTiming(); // Spigot
+             timings.tickEntities.stopTiming(); // Spigot
+             gameprofilerfiller.pop();
++            this.server.currentMicroTick = MicroTick.BLOCK_ENTITY; // WindmillTown - log current micro tick
+             this.tickBlockEntities();
+         }
+ 
+diff --git a/src/main/java/net/minecraft/server/level/ServerPlayerGameMode.java b/src/main/java/net/minecraft/server/level/ServerPlayerGameMode.java
+index baf3e79489e310f443788bc917c553ae7ea86c89..d44e017499263a4904542ee72d5ab45c571020ff 100644
+--- a/src/main/java/net/minecraft/server/level/ServerPlayerGameMode.java
++++ b/src/main/java/net/minecraft/server/level/ServerPlayerGameMode.java
+@@ -27,6 +27,8 @@ import net.minecraft.world.level.block.state.BlockState;
+ import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
+ import net.minecraft.world.phys.BlockHitResult;
+ import net.minecraft.world.phys.Vec3;
++import net.windmilltown.wtserver.WindmillTownConfig;
++import net.minecraft.world.level.block.JigsawBlock;
+ import org.slf4j.Logger;
+ 
+ // CraftBukkit start
+@@ -409,7 +411,7 @@ public class ServerPlayerGameMode {
+             BlockEntity tileentity = this.level.getBlockEntity(pos);
+             Block block = iblockdata.getBlock();
+ 
+-            if (block instanceof GameMasterBlock && !this.player.canUseGameMasterBlocks() && !(block instanceof net.minecraft.world.level.block.CommandBlock && (this.player.isCreative() && this.player.getBukkitEntity().hasPermission("minecraft.commandblock")))) { // Paper - command block permission
++            if (block instanceof GameMasterBlock && (!(WindmillTownConfig.getConfig().enableDebugBlock.value() || !(block instanceof JigsawBlock)) && !this.player.canUseGameMasterBlocks() && !(block instanceof net.minecraft.world.level.block.CommandBlock && (this.player.isCreative() && this.player.getBukkitEntity().hasPermission("minecraft.commandblock"))))) { // Paper - command block permission // WindmillTown - allow to break jigsaw block
+                 this.level.sendBlockUpdated(pos, iblockdata, iblockdata, 3);
+                 return false;
+             } else if (this.player.blockActionRestricted(this.level, pos, this.gameModeForPlayer)) {
+diff --git a/src/main/java/net/minecraft/world/item/GameMasterBlockItem.java b/src/main/java/net/minecraft/world/item/GameMasterBlockItem.java
+index 8cfce2d85041849ef3943e56c204fefeb07f96ec..7b69ac1da80b4ec11c255867d2b43c6245077ebc 100644
+--- a/src/main/java/net/minecraft/world/item/GameMasterBlockItem.java
++++ b/src/main/java/net/minecraft/world/item/GameMasterBlockItem.java
+@@ -5,6 +5,7 @@ import net.minecraft.world.entity.player.Player;
+ import net.minecraft.world.item.context.BlockPlaceContext;
+ import net.minecraft.world.level.block.Block;
+ import net.minecraft.world.level.block.state.BlockState;
++import net.windmilltown.wtserver.WindmillTownConfig;
+ 
+ public class GameMasterBlockItem extends BlockItem {
+     public GameMasterBlockItem(Block block, Item.Properties settings) {
+@@ -15,6 +16,9 @@ public class GameMasterBlockItem extends BlockItem {
+     @Override
+     protected BlockState getPlacementState(BlockPlaceContext context) {
+         Player player = context.getPlayer();
++        // WindmillTown start - allow to place jigsaw block if debug block feature is enabled
++        if(WindmillTownConfig.getConfig().enableDebugBlock.value() && this.equals(Items.JIGSAW)) return super.getPlacementState(context);
++        // WindmillTown end
+         return player != null && !player.canUseGameMasterBlocks() ? null : super.getPlacementState(context);
+     }
+ }
+diff --git a/src/main/java/net/minecraft/world/level/block/JigsawBlock.java b/src/main/java/net/minecraft/world/level/block/JigsawBlock.java
+index c031564cd85e18450230bb6b461e11744fbe135e..41f241e3e7d6279b00a3a7026d3f6fe86f7adcb4 100644
+--- a/src/main/java/net/minecraft/world/level/block/JigsawBlock.java
++++ b/src/main/java/net/minecraft/world/level/block/JigsawBlock.java
+@@ -3,11 +3,14 @@ package net.minecraft.world.level.block;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Direction;
+ import net.minecraft.core.FrontAndTop;
++import net.minecraft.server.MinecraftServer;
+ import net.minecraft.world.InteractionHand;
+ import net.minecraft.world.InteractionResult;
+ import net.minecraft.world.entity.player.Player;
+ import net.minecraft.world.item.context.BlockPlaceContext;
++import net.minecraft.world.item.context.UseOnContext;
+ import net.minecraft.world.level.Level;
++import net.minecraft.world.level.LevelAccessor;
+ import net.minecraft.world.level.block.entity.BlockEntity;
+ import net.minecraft.world.level.block.entity.JigsawBlockEntity;
+ import net.minecraft.world.level.block.state.BlockBehaviour;
+@@ -17,6 +20,16 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+ import net.minecraft.world.level.block.state.properties.EnumProperty;
+ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
+ import net.minecraft.world.phys.BlockHitResult;
++import net.minecraft.world.ticks.ScheduledTick;
++import net.windmilltown.wtserver.WindmillTown;
++import net.windmilltown.wtserver.WindmillTownConfig;
++import net.windmilltown.wtserver.debugblock.DebugBlock;
++import net.windmilltown.wtserver.debugblock.DebugBlockAction;
++import net.windmilltown.wtserver.debugblock.MicroTick;
++import net.windmilltown.wtserver.debugblock.PendingTick;
++import org.bukkit.craftbukkit.block.CraftBlock;
++
++import javax.annotation.Nullable;
+ 
+ public class JigsawBlock extends Block implements EntityBlock, GameMasterBlock {
+     public static final EnumProperty<FrontAndTop> ORIENTATION = BlockStateProperties.ORIENTATION;
+@@ -26,6 +39,17 @@ public class JigsawBlock extends Block implements EntityBlock, GameMasterBlock {
+         this.registerDefaultState(this.stateDefinition.any().setValue(ORIENTATION, FrontAndTop.NORTH_UP));
+     }
+ 
++    // WindmillTown start - invoke debug block placement
++    @Override
++    public void onPlace(BlockState iblockdata, Level world, BlockPos blockposition, BlockState iblockdata1, boolean flag, UseOnContext context) {
++        if(!WindmillTownConfig.getConfig().enableDebugBlock.value()) return;
++        if(!io.papermc.paper.util.TickThread.isTickThread()) return;
++        if(!(world.getBlockEntity(blockposition) instanceof JigsawBlockEntity jigsawBlockEntity)) return;
++        org.bukkit.entity.Player bukkitPlayer = context.getPlayer() == null ? null : (org.bukkit.entity.Player) context.getPlayer().getBukkitEntity();
++        WindmillTown.getWindmillTown().getDebugBlockAction().onDebugBlockPlace(bukkitPlayer, jigsawBlockEntity.getDebugBlock());
++    }
++    // WindmillTown end
++
+     @Override
+     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+         builder.add(ORIENTATION);
+@@ -43,7 +67,11 @@ public class JigsawBlock extends Block implements EntityBlock, GameMasterBlock {
+ 
+     @Override
+     public BlockState getStateForPlacement(BlockPlaceContext ctx) {
+-        Direction direction = ctx.getClickedFace();
++        // WindmillTown start - make the debug block always look at the opposite face that the player is looking at
++        Direction direction;
++        if(WindmillTownConfig.getConfig().enableDebugBlock.value()) direction = ctx.getNearestLookingDirection();
++        else direction = ctx.getClickedFace();
++        // WindmillTown end
+         Direction direction2;
+         if (direction.getAxis() == Direction.Axis.Y) {
+             direction2 = ctx.getHorizontalDirection().getOpposite();
+@@ -62,12 +90,19 @@ public class JigsawBlock extends Block implements EntityBlock, GameMasterBlock {
+     @Override
+     public InteractionResult use(BlockState state, Level world, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
+         BlockEntity blockEntity = world.getBlockEntity(pos);
+-        if (blockEntity instanceof JigsawBlockEntity && player.canUseGameMasterBlocks()) {
+-            player.openJigsawBlock((JigsawBlockEntity)blockEntity);
+-            return InteractionResult.sidedSuccess(world.isClientSide);
+-        } else {
+-            return InteractionResult.PASS;
++        // WindmillTown start - invoke dedicated method on debug block use
++        if (blockEntity instanceof JigsawBlockEntity jigsawBlockEntity) {
++            if(WindmillTownConfig.getConfig().enableDebugBlock.value() && io.papermc.paper.util.TickThread.isTickThread()) {
++                player.closeContainer();
++                boolean result = WindmillTown.getWindmillTown().getDebugBlockAction().onDebugBlockUse((org.bukkit.entity.Player) player.getBukkitEntity(), jigsawBlockEntity.getDebugBlock());
++                return result ? InteractionResult.SUCCESS : InteractionResult.PASS;
++            } else if (player.canUseGameMasterBlocks()) {
++                player.openJigsawBlock((JigsawBlockEntity) blockEntity);
++                return InteractionResult.sidedSuccess(world.isClientSide);
++            }
+         }
++        return InteractionResult.PASS;
++        // WindmillTown end
+     }
+ 
+     public static boolean canAttach(StructureTemplate.StructureBlockInfo info1, StructureTemplate.StructureBlockInfo info2) {
+@@ -89,4 +124,72 @@ public class JigsawBlock extends Block implements EntityBlock, GameMasterBlock {
+     public static Direction getTopFacing(BlockState state) {
+         return state.getValue(ORIENTATION).top();
+     }
++
++    // WindmillTown start - redstone relative debug block feature
++
++    @Override
++    public BlockState updateShape(BlockState state, Direction direction, BlockState neighborState, LevelAccessor world, BlockPos pos, BlockPos neighborPos) {
++        if(!WindmillTownConfig.getConfig().enableDebugBlock.value()) return state;
++        if(!io.papermc.paper.util.TickThread.isTickThread()) return state;
++        if(!(world.getBlockEntity(pos) instanceof JigsawBlockEntity jigsawBlockEntity)) return state;
++        DebugBlock debugBlock = jigsawBlockEntity.getDebugBlock();
++        if(!debugBlock.isEnabled()) return state;
++        DebugBlockAction action = WindmillTown.getWindmillTown().getDebugBlockAction();
++        if(action == null) return state;
++        MicroTick microTick = MinecraftServer.getServer().currentMicroTick;
++        if(debugBlock.isNotifyBlockUpdateShape()) action.onUpdateShape(debugBlock, CraftBlock.at(world, neighborPos), microTick, this.getLastPendingTick(microTick));
++        if(debugBlock.isUpdateSelfOnUpdateShape() && world instanceof Level level) this.updateState(level, pos, neighborPos, debugBlock, state, true);
++        return state;
++    }
++
++    @Override
++    public void neighborChanged(BlockState state, Level world, BlockPos pos, Block sourceBlock, BlockPos sourcePos, boolean notify) {
++        if(!WindmillTownConfig.getConfig().enableDebugBlock.value()) return;
++        if(!io.papermc.paper.util.TickThread.isTickThread()) return;
++        if(!(world.getBlockEntity(pos) instanceof JigsawBlockEntity jigsawBlockEntity)) return;
++        DebugBlock debugBlock = jigsawBlockEntity.getDebugBlock();
++        if(!debugBlock.isEnabled()) return;
++        DebugBlockAction action = WindmillTown.getWindmillTown().getDebugBlockAction();
++        if(action == null) return;
++        MicroTick microTick = MinecraftServer.getServer().currentMicroTick;
++        if(debugBlock.isNotifyBlockNeighborChanged()) action.onNeighborChanged(debugBlock, CraftBlock.at(world, sourcePos),microTick , this.getLastPendingTick(microTick));
++        if(debugBlock.isUpdateSelfOnNeighborChanged()) this.updateState(world, pos, sourcePos, debugBlock, state, false);
++    }
++
++    public boolean hasAnalogOutputSignal(BlockState state) {
++        return true;
++    }
++
++    @Override
++    public int getAnalogOutputSignal(BlockState state, Level world, BlockPos pos) {
++        if(!WindmillTownConfig.getConfig().enableDebugBlock.value()) return 0;
++        if(!io.papermc.paper.util.TickThread.isTickThread()) return 0;
++        if(!(world.getBlockEntity(pos) instanceof JigsawBlockEntity jigsawBlockEntity)) return 0;
++        if(!jigsawBlockEntity.getDebugBlock().isEnabled()) return 0;
++        return jigsawBlockEntity.getDebugBlock().getAnalogOutputStrength();
++    }
++
++    private void updateState(Level world, BlockPos pos, BlockPos sourcePos, DebugBlock debugBlock, BlockState state, boolean isBlockUpdateShape) {
++        boolean powered = world.hasNeighborSignal(pos) || debugBlock.isAllowQuasiPowered() && world.hasNeighborSignal(pos.above());
++        if(powered == debugBlock.isPowered()) return;
++        debugBlock.setPowered(powered);
++        Direction front = powered ? Direction.UP : Direction.DOWN;
++        Direction top = state.getValue(ORIENTATION).top();
++        if(top == Direction.UP || top == Direction.DOWN) top = Direction.EAST;
++        world.setBlock(pos, state.setValue(ORIENTATION, FrontAndTop.fromFrontAndTop(front, top)), 2);
++        if(!debugBlock.isNotifyBlockPowered()) return;
++        MicroTick microTick = MinecraftServer.getServer().currentMicroTick;
++        WindmillTown.getWindmillTown().getDebugBlockAction().onPowerStateChange(debugBlock, CraftBlock.at(world, sourcePos), isBlockUpdateShape, microTick, this.getLastPendingTick(microTick));
++    }
++
++    @Nullable
++    private PendingTick getLastPendingTick(MicroTick microTick) {
++        if(microTick.isPendingMicroTick()) {
++            ScheduledTick<?> scheduledTick = MinecraftServer.getServer().currentPendingTick;
++            if(scheduledTick == null) return null;
++            return new PendingTick(scheduledTick.subTickOrder(), scheduledTick.priority().getValue());
++        } return null;
++    }
++
++    // WindmillTown end
+ }
+diff --git a/src/main/java/net/minecraft/world/level/block/entity/JigsawBlockEntity.java b/src/main/java/net/minecraft/world/level/block/entity/JigsawBlockEntity.java
+index 182e16c1d968707a11329150d71b7d01df6c6e52..c976dec4f73f78dc4e42dd8b29278ca93e64414c 100644
+--- a/src/main/java/net/minecraft/world/level/block/entity/JigsawBlockEntity.java
++++ b/src/main/java/net/minecraft/world/level/block/entity/JigsawBlockEntity.java
+@@ -1,22 +1,28 @@
+ package net.minecraft.world.level.block.entity;
+ 
+ import java.util.Arrays;
++import java.util.Map;
+ import java.util.Optional;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Holder;
+ import net.minecraft.core.Registry;
+ import net.minecraft.core.registries.Registries;
+ import net.minecraft.nbt.CompoundTag;
++import net.minecraft.nbt.Tag;
+ import net.minecraft.network.chat.Component;
+ import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+ import net.minecraft.resources.ResourceKey;
+ import net.minecraft.resources.ResourceLocation;
++import net.minecraft.server.MinecraftServer;
+ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.util.StringRepresentable;
+ import net.minecraft.world.level.block.JigsawBlock;
+ import net.minecraft.world.level.block.state.BlockState;
+ import net.minecraft.world.level.levelgen.structure.pools.JigsawPlacement;
+ import net.minecraft.world.level.levelgen.structure.pools.StructureTemplatePool;
++import net.windmilltown.wtserver.debugblock.DebugBlock;
++import org.bukkit.block.Block;
++import org.bukkit.craftbukkit.block.CraftBlock;
+ 
+ public class JigsawBlockEntity extends BlockEntity {
+     public static final String TARGET = "target";
+@@ -82,6 +88,9 @@ public class JigsawBlockEntity extends BlockEntity {
+         nbt.putString("pool", this.pool.location().toString());
+         nbt.putString("final_state", this.finalState);
+         nbt.putString("joint", this.joint.getSerializedName());
++        // WindmillTown start - save debug block data into nbt
++        this.persistentDataContainer.put("debug_block_data", this.debugBlock.save());
++        // WindmillTown end
+     }
+ 
+     @Override
+@@ -94,6 +103,12 @@ public class JigsawBlockEntity extends BlockEntity {
+         this.joint = JigsawBlockEntity.JointType.byName(nbt.getString("joint")).orElseGet(() -> {
+             return JigsawBlock.getFrontFacing(this.getBlockState()).getAxis().isHorizontal() ? JigsawBlockEntity.JointType.ALIGNED : JigsawBlockEntity.JointType.ROLLABLE;
+         });
++        // WindmillTown start - load debug block data from nbt
++        Map<String, Tag> map = this.persistentDataContainer.getRaw();
++        if(!map.containsKey("debug_block_data")) return;
++        Tag tag = map.get("debug_block_data");
++        this.debugBlock.load(tag);
++        // WindmillTown end
+     }
+ 
+     @Override
+@@ -143,4 +158,72 @@ public class JigsawBlockEntity extends BlockEntity {
+             return Component.translatable("jigsaw_block.joint." + this.name);
+         }
+     }
++
++    // WindmillTown start - debug block implementation
++
++    private final WindmillTownDebugBlock debugBlock = new WindmillTownDebugBlock();
++
++    public DebugBlock getDebugBlock() {
++        return this.debugBlock;
++    }
++
++    public class WindmillTownDebugBlock extends DebugBlock {
++
++        public void load(Tag tag) {
++            if(!(tag instanceof CompoundTag compoundTag)) return;
++            int storedHash = compoundTag.getInt("hash");
++            int actualHash = this.getHash();
++            if(compoundTag.contains("name") && storedHash == actualHash) this.name = compoundTag.getString("name");
++            else this.name = String.format("#%03x", MinecraftServer.getServer().getTickCount() % 16 * 16 * 16).toUpperCase();
++            if(compoundTag.contains("bitmap")) this.setBitmap(compoundTag.getInt("bitmap"));
++            if(compoundTag.hasUUID("owner") && storedHash == actualHash) this.owner = compoundTag.getUUID("owner");
++            else this.owner = null;
++            if(compoundTag.contains("strength")) this.analogOutputStrength = compoundTag.getInt("strength");
++            if(storedHash != actualHash) this.enabled = false;
++        }
++
++        public CompoundTag save() {
++            CompoundTag tag = new CompoundTag();
++            tag.putString("name", this.name);
++            tag.putInt("bitmap", this.getBitmap());
++            if(this.owner != null) tag.putUUID("owner", this.owner);
++            tag.putInt("strength", this.analogOutputStrength);
++            tag.putInt("hash", this.getHash());
++            return tag;
++        }
++
++        private int getBitmap() {
++            return  (this.notifyBlockNeighborChanged ? 0x1 : 0) |
++                (this.notifyBlockUpdateShape ? 0x2 : 0) |
++                (this.notifyBlockPowered ? 0x4 : 0) |
++                (this.allowQuasiPowered ? 0x8 : 0) |
++                (this.publicDebugBlock ? 0x10 : 0) |
++                (this.powered ? 0x20 : 0) |
++                (this.updateSelfOnUpdateShape ? 0x40 : 0) |
++                (this.updateSelfOnNeighborChanged ? 0x80 : 0) |
++                (this.enabled ? 0x100 : 0);
++        }
++
++        private void setBitmap(int bitmap) {
++            this.notifyBlockNeighborChanged = (bitmap & 0x1) != 0;
++            this.notifyBlockUpdateShape = (bitmap & 0x2) != 0;
++            this.notifyBlockPowered = (bitmap & 0x4) != 0;
++            this.allowQuasiPowered = (bitmap & 0x8) != 0;
++            this.publicDebugBlock = (bitmap & 0x10) != 0;
++            this.powered = (bitmap & 0x20) != 0;
++            this.updateSelfOnUpdateShape = (bitmap & 0x40) != 0;
++            this.updateSelfOnNeighborChanged = (bitmap & 0x80) != 0;
++            this.enabled = (bitmap & 0x100) != 0;
++        }
++
++        private int getHash() {
++            return JigsawBlockEntity.this.getBlockPos().hashCode();
++        }
++
++        @Override
++        public Block getBukkitBlock() {
++            return CraftBlock.at(JigsawBlockEntity.this.getLevel(), JigsawBlockEntity.this.worldPosition);
++        }
++    }
++    // WindmillTown end
+ }
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTown.java b/src/main/java/net/windmilltown/wtserver/WindmillTown.java
+index a0950e47777a0a05bfe823a228d7bb355a411e49..08efc7d5b60bcd69f6007ab591cda7cb0ff6fe90 100644
+--- a/src/main/java/net/windmilltown/wtserver/WindmillTown.java
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTown.java
+@@ -1,9 +1,15 @@
+ package net.windmilltown.wtserver;
+ 
+ import net.minecraft.server.MinecraftServer;
+-import org.bukkit.Bukkit;
++import net.windmilltown.wtserver.debugblock.DebugBlock;
++import net.windmilltown.wtserver.debugblock.DebugBlockAction;
++import net.windmilltown.wtserver.debugblock.MicroTick;
++import net.windmilltown.wtserver.debugblock.PendingTick;
+ import org.bukkit.World;
++import org.bukkit.block.Block;
+ import org.bukkit.craftbukkit.CraftWorld;
++import org.bukkit.entity.Player;
++import org.jetbrains.annotations.Nullable;
+ 
+ public class WindmillTown implements WindmillTownAPI {
+ 
+@@ -17,6 +23,37 @@ public class WindmillTown implements WindmillTownAPI {
+         instance = this;
+     }
+ 
++
++
++    private DebugBlockAction debugBlockAction = new DebugBlockAction() {
++
++        @Override
++        public void onUpdateShape(DebugBlock block, Block source, MicroTick tick, @Nullable PendingTick pendingTick) {
++
++        }
++
++        @Override
++        public void onNeighborChanged(DebugBlock block, Block source, MicroTick tick, @Nullable PendingTick pendingTick) {
++
++        }
++
++        @Override
++        public void onPowerStateChange(DebugBlock block, Block source, boolean isBlockUpdateShape, MicroTick tick, @Nullable PendingTick pendingTick) {
++
++        }
++
++        @Override
++        public void onDebugBlockPlace(Player player, DebugBlock block) {
++
++        }
++
++        @Override
++        public boolean onDebugBlockUse(Player player, DebugBlock block) {
++            return false;
++        }
++    };
++
++
+     @Override
+     public void setOldVersionFallingTick(boolean useOld) {
+         WindmillTownConfig.getConfig().useOldVersionFallingTick.set(useOld);
+@@ -67,4 +104,13 @@ public class WindmillTown implements WindmillTownAPI {
+     public boolean isWorldFrozen(World world) {
+         return ((CraftWorld) world).getHandle().isWorldFrozen();
+     }
++
++    @Override
++    public void setDebugBlockAction(DebugBlockAction action) {
++        this.debugBlockAction = action;
++    }
++
++    public DebugBlockAction getDebugBlockAction() {
++        return this.debugBlockAction;
++    }
+ }
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java b/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
+index f19ede69ccd2c5f1e415cc7939401baae1579c9f..b17972918fbfe175e39347de75f2439d90a23243 100644
+--- a/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
+@@ -22,6 +22,10 @@ public class WindmillTownConfig extends YamlConfiguration {
+         "Enabling this feature will allow tridents with persist property never to despawn.",
+         "Its useful for building Bedrock-like trident-target circuit."
+     ));
++    final public ConfigKey<Boolean> enableDebugBlock = new ConfigKey<>("new-feature.enable-debug-block", false, ImmutableList.of(
++        "Debug block allow player to view power and block update info literally.",
++        "Debug block will remove all the vanilla jigsaw block abilities."
++    ));
+ 
+     private static WindmillTownConfig config;
+ 

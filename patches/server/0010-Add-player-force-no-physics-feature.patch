@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Thu, 20 Jul 2023 23:20:15 +0800
+Subject: [PATCH] Add player force no physics feature
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/player/Player.java b/src/main/java/net/minecraft/world/entity/player/Player.java
+index 58152160d609d0e9d105153aeb166a56a7955603..ee34906fe0316d147cf3d715eee09d53d5615b69 100644
+--- a/src/main/java/net/minecraft/world/entity/player/Player.java
++++ b/src/main/java/net/minecraft/world/entity/player/Player.java
+@@ -240,9 +240,15 @@ public abstract class Player extends LivingEntity {
+         this.entityData.define(Player.DATA_SHOULDER_RIGHT, new CompoundTag());
+     }
+ 
++    // WindmillTown start - force player to have no physics
++    protected boolean forceNoPhysics = false;
++    public void setForceNoPhysics(boolean noPhysics) {
++        this.forceNoPhysics = noPhysics;
++    }
++    // WindmillTown end
+     @Override
+     public void tick() {
+-        this.noPhysics = this.isSpectator();
++        this.noPhysics = this.forceNoPhysics && this.isCreative() && this.getAbilities().flying || this.isSpectator(); // WindmillTown - force no physics
+         if (this.isSpectator()) {
+             this.setOnGround(false);
+         }
+@@ -415,7 +421,7 @@ public abstract class Player extends LivingEntity {
+ 
+             Pose entitypose1;
+ 
+-            if (!this.isSpectator() && !this.isPassenger() && !this.canEnterPose(entitypose)) {
++            if (!this.isSpectator() && !this.forceNoPhysics && !this.isPassenger() && !this.canEnterPose(entitypose)) { // WindmillTown - force player have no physics
+                 if (this.canEnterPose(Pose.CROUCHING)) {
+                     entitypose1 = Pose.CROUCHING;
+                 } else {
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
+index dbdeb913e228651cadf5dbd7ec98afc738c80522..787dd88da39e6341ca39bd1423c93e6779d9ff18 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
+@@ -3180,4 +3180,11 @@ public class CraftPlayer extends CraftHumanEntity implements Player {
+         return this.spigot;
+     }
+     // Spigot end
++
++    // WindmillTown start
++    @Override
++    public void setPhysics(boolean physics) {
++        this.getHandle().setForceNoPhysics(!physics);
++    }
++    // WindmillTown end
+ }

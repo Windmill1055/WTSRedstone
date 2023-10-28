@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Wed, 17 May 2023 16:36:38 +0800
+Subject: [PATCH] WTServer API for plugins
+
+
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java b/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..349502d6166b3871b64ca4a88b8c6e039cee5916
+--- /dev/null
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java
+@@ -0,0 +1,4 @@
++package net.windmilltown.wtserver;
++
++public interface WindmillTownAPI {
++}
+diff --git a/src/main/java/org/bukkit/Server.java b/src/main/java/org/bukkit/Server.java
+index 6b72eccdcb6f75534a4267a1dd0a4cc2f39e917b..733b8983f6f804ca3be5ead9b4a5e5eef8bdce5a 100644
+--- a/src/main/java/org/bukkit/Server.java
++++ b/src/main/java/org/bukkit/Server.java
+@@ -54,6 +54,7 @@ import org.bukkit.scoreboard.Criteria;
+ import org.bukkit.scoreboard.ScoreboardManager;
+ import org.bukkit.structure.StructureManager;
+ import org.bukkit.util.CachedServerIcon;
++import org.checkerframework.checker.units.qual.N;
+ import org.jetbrains.annotations.Contract;
+ import org.jetbrains.annotations.NotNull;
+ import org.jetbrains.annotations.Nullable;
+@@ -2313,4 +2314,13 @@ public interface Server extends PluginMessageRecipient, net.kyori.adventure.audi
+      */
+     boolean isOwnedByCurrentRegion(@NotNull Entity entity);
+     // Paper end - Folia region threading API
++
++    // WindmillTown start
++
++    /**
++     * Get WTServer api for plugins
++     * @return WindmillTownAPI which contains all the methods that WTServer provides
++     */
++    @NotNull net.windmilltown.wtserver.WindmillTownAPI getWindmillTown();
++    // WindmillTown end
+ }

@@ -1,0 +1,293 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Thu, 18 May 2023 21:07:19 +0800
+Subject: [PATCH] Add tickrate and tick step feature
+
+
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index b19e34ed457bea8f460bee6b08674be91171460b..447dc21fbacad50d09ce32892c1280d2d0c0e985 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -1050,51 +1050,85 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+     public final RollingAverage tps5 = new RollingAverage(60 * 5);
+     public final RollingAverage tps15 = new RollingAverage(60 * 15);
+ 
++    // WindmillTown start - modified rolling average for dynamic tickrate
+     public static class RollingAverage {
+         private final int size;
+         private long time;
+-        private java.math.BigDecimal total;
++        private double total;
+         private int index = 0;
+-        private final java.math.BigDecimal[] samples;
++        private final double[] samples;
+         private final long[] times;
+ 
+         RollingAverage(int size) {
+             this.size = size;
+             this.time = size * SEC_IN_NANO;
+-            this.total = dec(TPS).multiply(dec(SEC_IN_NANO)).multiply(dec(size));
+-            this.samples = new java.math.BigDecimal[size];
++            this.total = TPS * SEC_IN_NANO * size;
++            this.samples = new double[size];
+             this.times = new long[size];
+             for (int i = 0; i < size; i++) {
+-                this.samples[i] = dec(TPS);
++                this.samples[i] =  TPS;
+                 this.times[i] = SEC_IN_NANO;
+             }
+         }
+-
+-        private static java.math.BigDecimal dec(long t) {
+-            return new java.math.BigDecimal(t);
++        public void clear() {
++            this.time = size * SEC_IN_NANO;
++            this.total = TPS * SEC_IN_NANO * size;
++            for (int i = 0; i < size; i++) {
++                this.samples[i] =  TPS;
++                this.times[i] = SEC_IN_NANO;
++            }
+         }
+         public void add(java.math.BigDecimal x, long t) {
+             time -= times[index];
+-            total = total.subtract(samples[index].multiply(dec(times[index])));
+-            samples[index] = x;
++            total = total - (samples[index] * times[index]);
++            samples[index] = x.floatValue();
+             times[index] = t;
+             time += t;
+-            total = total.add(x.multiply(dec(t)));
++            total = total + x.floatValue() * t;
+             if (++index == size) {
+                 index = 0;
+             }
+         }
+ 
+         public double getAverage() {
+-            return total.divide(dec(time), 30, java.math.RoundingMode.HALF_UP).doubleValue();
++            return total / time;
+         }
+     }
++    // WindmillTown end
+     private static final java.math.BigDecimal TPS_BASE = new java.math.BigDecimal(1E9).multiply(new java.math.BigDecimal(SAMPLE_INTERVAL));
+     // Paper End
+     // Spigot End
+ 
+     public static volatile RuntimeException chunkSystemCrash; // Paper - rewrite chunk system
+ 
++    // WindmillTown start - tickrate support
++    private float tickrate = MinecraftServer.TPS;
++    private int tickTime = (int) (1E9 / tickrate);
++    public float getTickrate() {
++        return this.tickrate;
++    }
++    public void setTickrate(ServerLevel world, float tickrate) {
++        if(tickrate <= 0 || tickrate > 400) return;
++        List<Float> tickrates = new ArrayList<>();
++        this.getAllLevels().forEach((level) -> tickrates.add(level.getTickrate()));
++        float nextTickrate = 20;
++        float maxTickrate = 10;
++        world.setTickrate(tickrate);
++        for(int i = 0; i < tickrates.size(); i++) {
++            float worldTickrate = tickrates.get(i);
++            if(worldTickrate > nextTickrate) nextTickrate = Math.min(800, Math.max(worldTickrate, maxTickrate * 2));
++            if(worldTickrate > maxTickrate) maxTickrate = worldTickrate;
++        }
++        this.tickrate = Math.max(20, nextTickrate);
++        this.tickTime = (int) (1E9 / tickrate);
++    }
++    public void setTickrate(float tickrate) {
++        if(tickrate <= 0 || tickrate > 400) return;
++        this.tickrate = Math.max((20f / tickrate) * tickrate, tickrate);
++        this.tickTime = (int) (1E9 / tickrate);
++        this.getAllLevels().forEach((world) -> world.setTickrate(tickrate));
++    }
++    // WindmillTown end
+     protected void runServer() {
+         try {
+             long serverStartTime = Util.getNanos(); // Paper
+@@ -1102,7 +1136,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+                 throw new IllegalStateException("Failed to initialize server");
+             }
+ 
+-            this.nextTickTime = Util.getMillis();
++            this.nextTickTime = Util.getNanos(); // WindmillTown - no next tick time takes nano time
+             this.statusIcon = (ServerStatus.Favicon) this.loadStatusIcon().orElse(null); // CraftBukkit - decompile error
+             this.status = this.buildServerStatus();
+ 
+@@ -1122,7 +1156,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             org.spigotmc.WatchdogThread.hasStarted = true; // Paper
+             Arrays.fill( recentTps, 20 );
+             long start = System.nanoTime(), curTime, tickSection = start; // Paper - Further improve server tick loop
+-            lastTick = start - TICK_TIME; // Paper
++            lastTick = start - tickTime; // Paper // WindmillTown -dynamic tickrate
+             while (this.running) {
+                 // Paper start - rewrite chunk system
+                 // guarantee that nothing can stop the server from halting if it can at least still tick
+@@ -1130,14 +1164,14 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+                     throw this.chunkSystemCrash;
+                 }
+                 // Paper end - rewrite chunk system
+-                long i = ((curTime = System.nanoTime()) / (1000L * 1000L)) - this.nextTickTime; // Paper
++                long i = (curTime = System.nanoTime()) - this.nextTickTime; // Paper // WindmillTown - no current time takes nano time
+ 
+-                if (i > 5000L && this.nextTickTime - this.lastOverloadWarning >= 30000L) { // CraftBukkit
+-                    long j = i / 50L;
++                if (i > 5000E6 && this.nextTickTime - this.lastOverloadWarning >= 30000E6) { // CraftBukkit // WindmillTown - use nano time
++                    long j = i / tickTime; // WindmillTown - dynamic tickrate
+ 
+                     if (this.server.getWarnOnOverload()) // CraftBukkit
+                     MinecraftServer.LOGGER.warn("Can't keep up! Is the server overloaded? Running {}ms or {} ticks behind", i, j);
+-                    this.nextTickTime += j * 50L;
++                    this.nextTickTime += j * tickTime; // WindmillTown - dynamic tickrate
+                     this.lastOverloadWarning = this.nextTickTime;
+                 }
+ 
+@@ -1165,13 +1199,13 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+ 
+                 //MinecraftServer.currentTick = (int) (System.currentTimeMillis() / 50); // CraftBukkit // Paper - don't overwrite current tick time
+                 lastTick = curTime;
+-                this.nextTickTime += 50L;
++                this.nextTickTime += tickTime; // WindmillTown - dynamic tickrate
+                 this.startMetricsRecordingTick();
+                 this.profiler.push("tick");
+                 this.tickServer(this::haveTime);
+                 this.profiler.popPush("nextTickWait");
+                 this.mayHaveDelayedTasks = true;
+-                this.delayedTasksMaxNextTickTime = Math.max(Util.getMillis() + 50L, this.nextTickTime);
++                this.delayedTasksMaxNextTickTime = Math.max(Util.getMillis() + tickTime / 1000 / 1000, this.nextTickTime / 1000 / 1000); // WindmillTown - dynamic tickrate
+                 this.waitUntilNextTick();
+                 this.profiler.pop();
+                 this.endMetricsRecordingTick();
+@@ -1272,7 +1306,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+     }
+ 
+     private boolean canSleepForTickNoOversleep() {
+-        return this.forceTicks || this.runningTask() || Util.getMillis() < this.nextTickTime;
++        return this.forceTicks || this.runningTask() || Util.getNanos() < this.nextTickTime; // WindmillTown - now we use nano time
+     }
+     // Paper end
+ 
+diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
+index 18aac3da3c88f33b1a71a5920a8daa27e9723913..68034bb8a76658045c5eaf77bc3c0882c4d9a838 100644
+--- a/src/main/java/net/minecraft/server/level/ServerLevel.java
++++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
+@@ -249,7 +249,7 @@ public class ServerLevel extends Level implements WorldGenLevel {
+         int minBlockZ = Mth.floor(axisalignedbb.minZ - 1.0E-7D) - 3;
+         int maxBlockZ = Mth.floor(axisalignedbb.maxZ + 1.0E-7D) + 3;
+ 
+-        int minChunkX = minBlockX >> 4;
++        int minChunkX = minBlockX >>  4;
+         int maxChunkX = maxBlockX >> 4;
+ 
+         int minChunkZ = minBlockZ >> 4;
+@@ -765,7 +765,49 @@ public class ServerLevel extends Level implements WorldGenLevel {
+         return this.structureManager;
+     }
+ 
++    // WindmillTown start - tickrate support
++    private float tickrate = 20.0f;
++    private int tickStep = 0;
++    private boolean freeze = false;
++    public void setTickrate(float tickrate) {
++        if(tickrate <= 0 || tickrate > 400) return;
++        this.tickrate = tickrate;
++    }
++    public float getTickrate() {
++        return this.tickrate;
++    }
++    public void setTickStep(int tickStep) {
++        if(tickStep <= 0 || tickStep > 9999) return;
++        this.tickStep = tickStep;
++    }
++    public int getTickStep() {
++        return this.tickStep;
++    }
++    public void freezeWorld(boolean freeze) {
++        this.freeze = freeze;
++    }
++    public boolean isWorldFrozen() {
++        return this.freeze;
++    }
++    // WindmillTown end
++
+     public void tick(BooleanSupplier shouldKeepTicking) {
++        // WindmillTown start - process tickrate at the start of one tick
++
++        float serverTickrate = server.getTickrate();
++        int serverTick = server.getTickCount();
++        int tickSkipCount = (int) (serverTickrate / this.tickrate);
++        if(tickSkipCount == 0) tickSkipCount = 1;
++        // If the server tick is not equal with the world tick, the server is speeding up
++        // We simply keep the world tick running at a fixed realtime tick
++        if(serverTick % tickSkipCount != 0) return;
++
++        // If the world is frozen and the tick step has not been set, we just skip this tick
++        if(this.freeze && this.tickStep == 0) return;
++
++        if(this.tickStep > 0) this.tickStep--;
++
++        // WindmillTown end
+         // Paper start - optimise checkDespawn
+         this.playersAffectingSpawning.clear();
+         for (ServerPlayer player : this.players) {
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTown.java b/src/main/java/net/windmilltown/wtserver/WindmillTown.java
+index c8fc1e87101baa8386ec7fe4e44f38b7127da7ee..a0950e47777a0a05bfe823a228d7bb355a411e49 100644
+--- a/src/main/java/net/windmilltown/wtserver/WindmillTown.java
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTown.java
+@@ -1,5 +1,10 @@
+ package net.windmilltown.wtserver;
+ 
++import net.minecraft.server.MinecraftServer;
++import org.bukkit.Bukkit;
++import org.bukkit.World;
++import org.bukkit.craftbukkit.CraftWorld;
++
+ public class WindmillTown implements WindmillTownAPI {
+ 
+     private static WindmillTown instance;
+@@ -22,4 +27,44 @@ public class WindmillTown implements WindmillTownAPI {
+     public boolean getOldVersionFallingTick() {
+         return WindmillTownConfig.getConfig().useOldVersionFallingTick.value();
+     }
++
++    @Override
++    public void setTickrate(float tickrate) {
++        MinecraftServer.getServer().setTickrate(tickrate);
++    }
++
++    @Override
++    public void setTickrate(float tickrate, World world) {
++        MinecraftServer.getServer().setTickrate(((CraftWorld) world).getHandle(), tickrate);
++    }
++
++    @Override
++    public float getTickrate() {
++        return MinecraftServer.getServer().getTickrate();
++    }
++
++    @Override
++    public float getTickrate(World world) {
++        return ((CraftWorld) world).getHandle().getTickrate();
++    }
++
++    @Override
++    public void setTickStep(int tickStep, World world) {
++        ((CraftWorld) world).getHandle().setTickStep(tickStep);
++    }
++
++    @Override
++    public int getTickStep(World world) {
++        return ((CraftWorld) world).getHandle().getTickStep();
++    }
++
++    @Override
++    public void freezeWorld(World world, boolean freeze) {
++        ((CraftWorld) world).getHandle().freezeWorld(freeze);
++    }
++
++    @Override
++    public boolean isWorldFrozen(World world) {
++        return ((CraftWorld) world).getHandle().isWorldFrozen();
++    }
+ }

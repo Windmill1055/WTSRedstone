@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Thu, 20 Jul 2023 23:20:15 +0800
+Subject: [PATCH] Add player force no physics api
+
+
+diff --git a/src/main/java/org/bukkit/entity/Player.java b/src/main/java/org/bukkit/entity/Player.java
+index 06b2b925de745850816d9ce0cf6316412c8d2b49..4631c655380e9f338b6d811c8d166ce1ab9c0ba5 100644
+--- a/src/main/java/org/bukkit/entity/Player.java
++++ b/src/main/java/org/bukkit/entity/Player.java
+@@ -3153,4 +3153,14 @@ public interface Player extends HumanEntity, Conversable, OfflinePlayer, PluginM
+     @Override
+     Spigot spigot();
+     // Spigot end
++
++    // WindmillTown start
++
++    /**
++     * WTServer allows to disable player physics though they are not in spectator mode.
++     * This feature can be used to implement no clip functionality.
++     * @param physics whether the player should has physics.
++     */
++    void setPhysics(boolean physics);
++    // WindmillTown end
+ }

@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Wed, 17 May 2023 16:36:38 +0800
+Subject: [PATCH] WindmillTown base
+
+
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTown.java b/src/main/java/net/windmilltown/wtserver/WindmillTown.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..585427f1146fb33a6c3280615398316042855d22
+--- /dev/null
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTown.java
+@@ -0,0 +1,14 @@
++package net.windmilltown.wtserver;
++
++public class WindmillTown implements WindmillTownAPI {
++
++    private static WindmillTown instance;
++
++    public static WindmillTown getWindmillTown() {
++        return instance;
++    }
++
++    public WindmillTown() {
++        instance = this;
++    }
++}
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index 3733e3136902df1e0c7403e1066e23c9a6879cfc..550e65a282adbcda26ed2c3f33b960a5397ec68e 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -114,6 +114,8 @@ import net.minecraft.world.level.storage.WorldData;
+ import net.minecraft.world.level.storage.loot.LootDataManager;
+ import net.minecraft.world.level.validation.ContentValidationException;
+ import net.minecraft.world.phys.Vec3;
++import net.windmilltown.wtserver.WindmillTown;
++import net.windmilltown.wtserver.WindmillTownAPI;
+ import org.bukkit.BanList;
+ import org.bukkit.Bukkit;
+ import org.bukkit.ChatColor;
+@@ -253,6 +255,7 @@ import org.bukkit.scoreboard.Criteria;
+ import org.bukkit.structure.StructureManager;
+ import org.bukkit.util.StringUtil;
+ import org.bukkit.util.permissions.DefaultPermissions;
++import org.jetbrains.annotations.NotNull;
+ import org.yaml.snakeyaml.LoaderOptions;
+ import org.yaml.snakeyaml.Yaml;
+ import org.yaml.snakeyaml.constructor.SafeConstructor;
+@@ -3076,5 +3079,14 @@ public final class CraftServer implements Server {
+         return this.potionBrewer;
+     }
+ 
++    // WindmillTown start
++    final private WindmillTown windmillTown = new WindmillTown();
++    @NotNull
++    @Override
++    public WindmillTownAPI getWindmillTown() {
++        return windmillTown;
++    }
++    // WindmillTown end
++
+     // Paper end
+ }

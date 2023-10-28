@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <xiomgyuancheng@gmail.com>
+Date: Sat, 28 Oct 2023 23:21:08 +0800
+Subject: [PATCH] Add block place no update feature
+
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
+index 5401ab9f8f6ce12e1c5368dbc3acc78a250b3822..c3b38e62a0651db21d55e7b2d6af0a3353d8ed6c 100644
+--- a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
++++ b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
+@@ -209,7 +209,7 @@ public class CraftBlock implements Block {
+         if (applyPhysics) {
+             return world.setBlock(position, blockData, 3);
+         } else {
+-            boolean success = world.setBlock(position, blockData, 2 | 16 | 1024); // NOTIFY | NO_OBSERVER | NO_PLACE (custom)
++            boolean success = world.setBlock(position, blockData, 2 | 16 | 64 | 1024); // NOTIFY | NO_OBSERVER | NO_PLACE (custom) // WindmillTown - flag 64 to remove block update
+             if (success && world instanceof net.minecraft.world.level.Level) {
+                 world.getMinecraftWorld().sendBlockUpdated(
+                         position,

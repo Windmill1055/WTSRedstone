@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Thu, 18 May 2023 15:43:52 +0800
+Subject: [PATCH] Add persistent trident feature
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/projectile/ThrownTrident.java b/src/main/java/net/minecraft/world/entity/projectile/ThrownTrident.java
+index 454dd67920826b8b62c2654abfd43fc08c2648e4..9de34a9ef8372c3ab649588a1d3b0e16917b4c8b 100644
+--- a/src/main/java/net/minecraft/world/entity/projectile/ThrownTrident.java
++++ b/src/main/java/net/minecraft/world/entity/projectile/ThrownTrident.java
+@@ -22,6 +22,7 @@ import net.minecraft.world.item.enchantment.EnchantmentHelper;
+ import net.minecraft.world.level.Level;
+ import net.minecraft.world.phys.EntityHitResult;
+ import net.minecraft.world.phys.Vec3;
++import net.windmilltown.wtserver.WindmillTownConfig;
+ 
+ public class ThrownTrident extends AbstractArrow {
+ 
+@@ -221,10 +222,18 @@ public class ThrownTrident extends AbstractArrow {
+         nbt.putBoolean("DealtDamage", this.dealtDamage);
+     }
+ 
++    // WindmillTown start - make trident pickable if the trident is persistent
++    @Override
++    public boolean isPickable() {
++        return WindmillTownConfig.getConfig().allowPersistentTrident.value() && this.persist;
++    }
++    // WindmillTown end
++
+     @Override
+     public void tickDespawn() {
+         byte b0 = (Byte) this.entityData.get(ThrownTrident.ID_LOYALTY);
+ 
++        if(this.persist && WindmillTownConfig.getConfig().allowPersistentTrident.value()) return; // WindmillTown - allow persistent trident
+         if (this.pickup != AbstractArrow.Pickup.ALLOWED || b0 <= 0) {
+             super.tickDespawn();
+         }
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java b/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
+index ce918f7ef8da41a612ccd7bcd23d12e6b8629405..f19ede69ccd2c5f1e415cc7939401baae1579c9f 100644
+--- a/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
+@@ -18,6 +18,10 @@ public class WindmillTownConfig extends YamlConfiguration {
+         "Enabling this feature will replace the paper voxel shape collider with the vanilla collider.",
+         "Vanilla collider takes more than 50% performance cost but will fix all the collision issues."
+     ));
++    final public ConfigKey<Boolean> allowPersistentTrident = new ConfigKey<>("new-feature.allow-persistent-trident", false, ImmutableList.of(
++        "Enabling this feature will allow tridents with persist property never to despawn.",
++        "Its useful for building Bedrock-like trident-target circuit."
++    ));
+ 
+     private static WindmillTownConfig config;
+ 

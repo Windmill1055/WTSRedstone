@@ -1,0 +1,146 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Wed, 17 May 2023 18:42:17 +0800
+Subject: [PATCH] WTServer configuration base
+
+
+diff --git a/src/main/java/net/windmilltown/wtserver/ConfigKey.java b/src/main/java/net/windmilltown/wtserver/ConfigKey.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c70bfe8e4a5aeb0712e8904daed37e6868902e4d
+--- /dev/null
++++ b/src/main/java/net/windmilltown/wtserver/ConfigKey.java
+@@ -0,0 +1,34 @@
++package net.windmilltown.wtserver;
++
++import org.bukkit.configuration.file.YamlConfiguration;
++
++import java.util.List;
++
++public class ConfigKey<T> {
++    final String path;
++    T value;
++    final List<String> comments;
++    public ConfigKey(String path, T value) {
++        this.path = path;
++        this.value = value;
++        this.comments = List.of();
++    }
++    public ConfigKey(String path, T value, List<String> comments) {
++        this.path = path;
++        this.value = value;
++        this.comments = List.copyOf(comments);
++    }
++    public T value() {
++        return this.value;
++    }
++    public void set(T value) {
++        this.value = value;
++    }
++    public void setByObject(Object value) {
++        if(value.getClass() != this.value.getClass()) throw new ClassCastException();
++        this.value = (T) value;
++    }
++    void setByObject(YamlConfiguration configuration) {
++        configuration.set(this.path, this.value);
++    }
++}
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java b/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..78f48e163e97cc49718ff2824d8ee115c840d56e
+--- /dev/null
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
+@@ -0,0 +1,94 @@
++package net.windmilltown.wtserver;
++
++import org.bukkit.Bukkit;
++import org.bukkit.configuration.InvalidConfigurationException;
++import org.bukkit.configuration.file.YamlConfiguration;
++
++import java.io.File;
++import java.io.IOException;
++import java.lang.reflect.Field;
++
++public class WindmillTownConfig extends YamlConfiguration {
++
++    private static WindmillTownConfig config;
++
++    /**
++     * Read the configuration or create the configuration if not exists
++     */
++    public WindmillTownConfig() throws IOException, InvalidConfigurationException {
++        if(WindmillTownConfig.config != null) return;
++        this.init();
++        WindmillTownConfig.config = this;
++    }
++
++    public static WindmillTownConfig getConfig() {
++        if(WindmillTownConfig.config == null) {
++            // WindmillTown start
++            try {
++                new WindmillTownConfig();
++            } catch (Exception e) {
++                Bukkit.getLogger().warning("Error occurred while read and write WTServer config file!");
++                Bukkit.getLogger().warning("WTServer will use default value for replacement");
++                e.printStackTrace();
++            }
++        }
++        return WindmillTownConfig.config;
++    }
++
++    private void init() throws IOException, InvalidConfigurationException {
++        File configFile = new File("config" + File.separator + "windmilltown.yml");
++        if(configFile.exists()) this.load(configFile);
++        this.writeNewConfig();
++        this.setConfigs();
++        this.writeComments();
++        this.save();
++    }
++
++    private void writeNewConfig() throws IOException {
++        ConfigKey<?>[] configs = this.getConfigs();
++        for (ConfigKey<?> config : configs)
++            if(!this.contains(config.path)) config.setByObject(this);
++        this.save("config" + File.separator + "windmilltown.yml");
++    }
++    private void writeComments() {
++        ConfigKey<?>[] configs = this.getConfigs();
++        for(ConfigKey<?> config : configs)
++            this.setComments(config.path, config.comments);
++    }
++    private void setConfigs() {
++        ConfigKey<?>[] configs = this.getConfigs();
++        for(ConfigKey<?> config : configs) {
++            try {
++                config.setByObject(this.get(config.path));
++            } catch (Exception e) {
++                Bukkit.getLogger().warning("WTServer configuration \"" + config.path + "\" has an incorrect value!");
++                Bukkit.getLogger().warning("WTServer will use a default value for replacement.");
++                this.set(config.path, config.value);
++                e.printStackTrace();
++            }
++        }
++    }
++
++    private ConfigKey<?>[] getConfigs() {
++        try {
++            Field[] fields = WindmillTownConfig.class.getFields();
++            ConfigKey<?>[] configs = new ConfigKey[fields.length];
++            for(int i = 0; i < fields.length; i++)
++                configs[i] = (ConfigKey<?>) fields[i].get(this);
++            return configs;
++        } catch (IllegalAccessException e) {
++            Bukkit.getLogger().severe("An internal error occurred when initializing WTServer:");
++            e.printStackTrace();
++            return null;
++        }
++    }
++
++    public void save() {
++        try {
++            this.save("config" + File.separator + "windmilltown.yml");
++        } catch (IOException e) {
++            Bukkit.getLogger().warning("Cannot save windmilltown configuration file!");
++            e.printStackTrace();
++        }
++    }
++}

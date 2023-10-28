@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Wed, 17 May 2023 21:55:07 +0800
+Subject: [PATCH] Spigot always tick entities fix
+
+
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java b/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
+index 1aa17f0e6c98d2928ab8dac362309cc036cb0d88..6dbd2ae7dd3ddca325eb0824461532b21d4e3ae1 100644
+--- a/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTownConfig.java
+@@ -12,6 +12,7 @@ public class WindmillTownConfig extends YamlConfiguration {
+ 
+     final public ConfigKey<Boolean> useOldVersionFallingTick = new ConfigKey<>("game-behaviour.use-old-falling-tick", false);
+     final public ConfigKey<Boolean> fallingTickModeAutoSave = new ConfigKey<>("game-behaviour.falling-tick-auto-save", false);
++    final public ConfigKey<Boolean> alwaysTickEntities = new ConfigKey<>("paper-fix.always-tick-entities", false);
+ 
+     private static WindmillTownConfig config;
+ 
+diff --git a/src/main/java/org/spigotmc/ActivationRange.java b/src/main/java/org/spigotmc/ActivationRange.java
+index eda7f0bb42f7269676d5d2193e1155912ede9920..55386984002b5d66d13d12a76e7a21c07a117f25 100644
+--- a/src/main/java/org/spigotmc/ActivationRange.java
++++ b/src/main/java/org/spigotmc/ActivationRange.java
+@@ -38,6 +38,7 @@ import co.aikar.timings.MinecraftTimings;
+ import net.minecraft.world.entity.schedule.Activity;
+ import net.minecraft.world.level.Level;
+ import net.minecraft.world.phys.AABB;
++import net.windmilltown.wtserver.WindmillTownConfig;
+ 
+ public class ActivationRange
+ {
+@@ -373,6 +374,10 @@ public class ActivationRange
+      */
+     public static boolean checkIfActive(Entity entity)
+     {
++        // WindmillTown start
++        // We always tick entities if the corresponding configuration is enabled
++        if(WindmillTownConfig.getConfig().alwaysTickEntities.value()) return true;
++        // WindmillTown end
+         // Never safe to skip fireworks or entities not yet added to chunk
+         if ( entity instanceof FireworkRocketEntity ) {
+             return true;

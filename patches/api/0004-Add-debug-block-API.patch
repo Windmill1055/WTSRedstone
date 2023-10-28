@@ -1,0 +1,220 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Wed, 19 Jul 2023 18:57:10 +0800
+Subject: [PATCH] Add debug block API
+
+
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java b/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java
+index 8cfc935ac38ededaef5f362a0a118be95de7cd8d..8fb980adfccd3f6f54320c55144079830b28b68a 100644
+--- a/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java
+@@ -1,5 +1,6 @@
+ package net.windmilltown.wtserver;
+ 
++import net.windmilltown.wtserver.debugblock.DebugBlockAction;
+ import org.bukkit.World;
+ 
+ public interface WindmillTownAPI {
+@@ -67,4 +68,10 @@ public interface WindmillTownAPI {
+      * @return true if the world is currently frozen
+      */
+     boolean isWorldFrozen(World world);
++
++    /**
++     * Set the debug block action callback
++     * @param action the callbacks
++     */
++    void setDebugBlockAction(DebugBlockAction action);
+ }
+diff --git a/src/main/java/net/windmilltown/wtserver/debugblock/DebugBlock.java b/src/main/java/net/windmilltown/wtserver/debugblock/DebugBlock.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..d1159ab806e18779e78c3a443d96ae0c8a43e331
+--- /dev/null
++++ b/src/main/java/net/windmilltown/wtserver/debugblock/DebugBlock.java
+@@ -0,0 +1,130 @@
++package net.windmilltown.wtserver.debugblock;
++
++import org.bukkit.block.Block;
++
++import java.util.UUID;
++
++public abstract class DebugBlock {
++    // Whether the debug block will process nc block update
++    protected boolean updateSelfOnNeighborChanged = true;
++    // Whether the debug block will process pp block update
++    protected boolean updateSelfOnUpdateShape = false;
++    // Whether the debug block will invoke the callback when receiving pp block update
++    protected boolean notifyBlockUpdateShape = false;
++    // Whether the debug block will invoke the callback when receiving nc block update
++    protected boolean notifyBlockNeighborChanged = false;
++    // Whether the debug block will invoke the callback when power state changed
++    protected boolean notifyBlockPowered = true;
++    // Whether the debug block process quasi power
++    protected boolean allowQuasiPowered = false;
++    // The debug block output will be sent to all the neighbors if set to true
++    protected boolean publicDebugBlock = false;
++    // A debug block will not process any redstone signal or block update if set enabled to false
++    protected boolean enabled = false;
++    // The redstone power state of the debug block
++    protected boolean powered = false;
++    // Set the analog output strength for comparators
++    protected int analogOutputStrength = 0;
++
++    protected UUID owner = null;
++    protected String name = "DEBUG_BLOCK";
++
++    abstract public Block getBukkitBlock();
++
++    public boolean isUpdateSelfOnNeighborChanged() {
++        return updateSelfOnNeighborChanged;
++    }
++
++    public void setUpdateSelfOnNeighborChanged(boolean updateSelfOnNeighborChanged) {
++        this.updateSelfOnNeighborChanged = updateSelfOnNeighborChanged;
++    }
++
++    public boolean isUpdateSelfOnUpdateShape() {
++        return updateSelfOnUpdateShape;
++    }
++
++    public void setUpdateSelfOnUpdateShape(boolean updateSelfOnUpdateShape) {
++        this.updateSelfOnUpdateShape = updateSelfOnUpdateShape;
++    }
++
++    public boolean isNotifyBlockUpdateShape() {
++        return notifyBlockUpdateShape;
++    }
++
++    public void setNotifyBlockUpdateShape(boolean notifyBlockUpdateShape) {
++        this.notifyBlockUpdateShape = notifyBlockUpdateShape;
++    }
++
++    public boolean isNotifyBlockNeighborChanged() {
++        return notifyBlockNeighborChanged;
++    }
++
++    public void setNotifyBlockNeighborChanged(boolean notifyBlockNeighborChanged) {
++        this.notifyBlockNeighborChanged = notifyBlockNeighborChanged;
++    }
++
++    public boolean isNotifyBlockPowered() {
++        return notifyBlockPowered;
++    }
++
++    public void setNotifyBlockPowered(boolean notifyBlockPowered) {
++        this.notifyBlockPowered = notifyBlockPowered;
++    }
++
++    public boolean isAllowQuasiPowered() {
++        return allowQuasiPowered;
++    }
++
++    public void setAllowQuasiPowered(boolean allowQuasiPowered) {
++        this.allowQuasiPowered = allowQuasiPowered;
++    }
++
++    public UUID getOwner() {
++        return owner;
++    }
++
++    public void setOwner(UUID owner) {
++        this.owner = owner;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        if(name == null) return;
++        this.name = name;
++    }
++
++    public void setAnalogOutputStrength(int strength) {
++        this.analogOutputStrength = strength;
++    }
++
++    public int getAnalogOutputStrength() {
++        return this.analogOutputStrength;
++    }
++
++    public void setPublic(boolean publicDebugBlock) {
++        this.publicDebugBlock = publicDebugBlock;
++    }
++
++    public boolean isPublic() {
++        return this.publicDebugBlock;
++    }
++
++    public void setEnabled(boolean enabled) {
++        this.enabled = enabled;
++    }
++
++    public boolean isEnabled() {
++        return this.enabled;
++    }
++
++    public void setPowered(boolean powered) {
++        this.powered = powered;
++    }
++
++    public boolean isPowered() {
++        return this.powered;
++    }
++}
+diff --git a/src/main/java/net/windmilltown/wtserver/debugblock/DebugBlockAction.java b/src/main/java/net/windmilltown/wtserver/debugblock/DebugBlockAction.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..5be4350275e529ffb37c83c77e07d6265fa05a18
+--- /dev/null
++++ b/src/main/java/net/windmilltown/wtserver/debugblock/DebugBlockAction.java
+@@ -0,0 +1,14 @@
++package net.windmilltown.wtserver.debugblock;
++
++import org.bukkit.block.Block;
++import org.bukkit.entity.Player;
++
++import javax.annotation.Nullable;
++
++public interface DebugBlockAction {
++    void onUpdateShape(DebugBlock block, Block source, MicroTick tick, @Nullable PendingTick pendingTick);
++    void onNeighborChanged(DebugBlock block, Block source, MicroTick tick, @Nullable PendingTick pendingTick);
++    void onPowerStateChange(DebugBlock block, Block source, boolean isBlockUpdateShape, MicroTick tick, @Nullable PendingTick pendingTick);
++    void onDebugBlockPlace(Player player, DebugBlock block);
++    boolean onDebugBlockUse(Player player, DebugBlock block);
++}
+diff --git a/src/main/java/net/windmilltown/wtserver/debugblock/MicroTick.java b/src/main/java/net/windmilltown/wtserver/debugblock/MicroTick.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c520a78727b5310b0922649da1a55b8db36229df
+--- /dev/null
++++ b/src/main/java/net/windmilltown/wtserver/debugblock/MicroTick.java
+@@ -0,0 +1,20 @@
++package net.windmilltown.wtserver.debugblock;
++
++public enum MicroTick {
++    NAN(false),
++    NEXT_TICK_ENTRY_BLOCK(true),
++    NEXT_TICK_ENTRY_FLUID(true),
++    BLOCK_EVENT(false),
++    ENTITY(false),
++    BLOCK_ENTITY(false),
++    NETWORK_UPDATE(false);
++    final boolean pendingMicroTick;
++
++    MicroTick(boolean pendingMicroTick) {
++        this.pendingMicroTick = pendingMicroTick;
++    }
++
++    public boolean isPendingMicroTick() {
++        return this.pendingMicroTick;
++    }
++}
+diff --git a/src/main/java/net/windmilltown/wtserver/debugblock/PendingTick.java b/src/main/java/net/windmilltown/wtserver/debugblock/PendingTick.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..881ad718a2444431f4b1ba83ab668cd7e0911d06
+--- /dev/null
++++ b/src/main/java/net/windmilltown/wtserver/debugblock/PendingTick.java
+@@ -0,0 +1,4 @@
++package net.windmilltown.wtserver.debugblock;
++
++public record PendingTick(long subTickOrder, int priority) {
++}

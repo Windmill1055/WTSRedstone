@@ -1,0 +1,76 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Thu, 18 May 2023 18:26:11 +0800
+Subject: [PATCH] Add tickrate API
+
+
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java b/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java
+index bb10594483326e8dae236065becacc1716d95b06..8cfc935ac38ededaef5f362a0a118be95de7cd8d 100644
+--- a/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java
+@@ -1,5 +1,7 @@
+ package net.windmilltown.wtserver;
+ 
++import org.bukkit.World;
++
+ public interface WindmillTownAPI {
+     /**
+      * Set whether we use the 1.19.1- falling block tick mode
+@@ -12,4 +14,57 @@ public interface WindmillTownAPI {
+      * @return true if the server is using the 1.19.2- mode
+      */
+     boolean getOldVersionFallingTick();
++
++    /**
++     * Set the tickrate for the whole server
++     * @param tickrate the target tickrate
++     */
++    void setTickrate(float tickrate);
++
++    /**
++     * Set the tickrate for the dedicated world
++     * @param tickrate the target tickrate
++     * @param world the target world
++     */
++    void setTickrate(float tickrate, World world);
++
++    /**
++     * Get the tickrate of the whole server
++     * @return server tickrate
++     */
++    float getTickrate();
++
++    /**
++     * Get the tickrate of the dedicated world
++     * @param world the target world
++     * @return the tickrate of the world
++     */
++    float getTickrate(World world);
++
++    /**
++     * Set tick step count for a world
++     * @param tickStep the tick step count
++     * @param world the target world
++     */
++    void setTickStep(int tickStep, World world);
++
++    /**
++     * Get current tick step count of the target world
++     * @param world the world
++     * @return the tick step count of the world
++     */
++    int getTickStep(World world);
++
++    /**
++     * Freeze the tick loop of a world
++     * @param world the target world
++     */
++    void freezeWorld(World world, boolean freeze);
++
++    /**
++     * Get whether the world is frozen
++     * @param world the target world
++     * @return true if the world is currently frozen
++     */
++    boolean isWorldFrozen(World world);
+ }

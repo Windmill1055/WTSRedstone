@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Windmill1055 <13755781055@163.com>
+Date: Wed, 17 May 2023 19:44:44 +0800
+Subject: [PATCH] Falling block tick mode API
+
+
+diff --git a/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java b/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java
+index 349502d6166b3871b64ca4a88b8c6e039cee5916..bb10594483326e8dae236065becacc1716d95b06 100644
+--- a/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java
++++ b/src/main/java/net/windmilltown/wtserver/WindmillTownAPI.java
+@@ -1,4 +1,15 @@
+ package net.windmilltown.wtserver;
+ 
+ public interface WindmillTownAPI {
++    /**
++     * Set whether we use the 1.19.1- falling block tick mode
++     * @param useOld set to true to use the 1.19.2- mode
++     */
++    void setOldVersionFallingTick(boolean useOld);
++
++    /**
++     * Get the current falling block tick mode
++     * @return true if the server is using the 1.19.2- mode
++     */
++    boolean getOldVersionFallingTick();
+ }
